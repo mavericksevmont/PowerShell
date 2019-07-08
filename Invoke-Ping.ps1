@@ -9,7 +9,7 @@
 
     Default action will run a ping against systems
         If Quiet parameter is specified, we return an array of systems that responded
-        If Detail parameter is specified, we test WSMan, RemoteReg, RPC, RDP and/or SMB
+        If Detail parameter is specified, we test WSMan, RemoteReg, RPC, RDP, SSH and/or SMB
 
 .PARAMETER ComputerName
     One or more computers to test
@@ -24,6 +24,7 @@
         RPC        via WMI
         RDP        via port 3389
         SMB        via \\ComputerName\C$
+        SSH        via port 22
         *          All tests
 
 .PARAMETER Timeout
@@ -40,7 +41,7 @@
 .EXAMPLE
     Invoke-Ping Server1, Server2, Server3 -Detail *
 
-    # Check for WSMan, Remote Registry, Remote RPC, RDP, and SMB (via C$) connectivity against 3 machines
+    # Check for WSMan, Remote Registry, Remote RPC, RDP, SSH and SMB (via C$) connectivity against 3 machines
 
 .EXAMPLE
     $Computers | Invoke-Ping
@@ -67,7 +68,7 @@
         [string[]]$ComputerName,
         
         [Parameter( ParameterSetName='Detail')]
-        [validateset("*","WSMan","RemoteReg","RPC","RDP","SMB")]
+        [validateset("*","WSMan","RemoteReg","RPC","RDP","SMB","SSH")]
         [string[]]$Detail,
         
         [Parameter(ParameterSetName='Ping')]
@@ -570,7 +571,7 @@
             }
         }
 
-    }
+    } 
     End
     {
 
@@ -614,6 +615,7 @@
                             [switch]$RPC,
                             [switch]$SMB,
                             [switch]$WSMAN,
+                            [switch]$SSH,
                             [switch]$IPV6,
 	                        [Management.Automation.PSCredential]$Credential
                         )
@@ -626,7 +628,7 @@
                                     Throw "Must supply Credentials with CredSSP test"
                                 }
 
-                                [string[]]$props = write-output Name, IP, Domain, Ping, WSMAN, CredSSP, RemoteReg, RPC, RDP, SMB
+                                [string[]]$props = write-output Name, IP, Domain, Ping, WSMAN, CredSSP, RemoteReg, RPC, RDP, SMB, SSH
 
                                 #Hash table to create PSObjects later, compatible with ps2...
                                 $Hash = @{}
@@ -807,6 +809,28 @@
 			                                    Write-verbose "SMB:  $((New-TimeSpan $dt ($dt = get-date)).totalseconds)"
 
                                             }
+
+                                            if($SSH -or $All)
+                                            {
+                                                ####SSH Check (firewall may block)
+		                                        try{
+                                                    $socket = New-Object Net.Sockets.TcpClient($name, 22) -ErrorAction stop
+		                                            if($socket -eq $null)
+		                                            {
+			                                            $rst.SSH = $false
+		                                            }
+		                                            else
+		                                            {
+			                                            $rst.SSH = $true
+			                                            $socket.close()
+		                                            }
+                                                }
+                                                catch
+                                                {
+                                                    $rst.SSH = $false
+                                                    Write-Verbose "Error testing SSH: $_"
+                                                }
+                                            }
 	                                    }
 		                                else
 		                                {
@@ -816,6 +840,7 @@
 			                                $rst.remotereg = $false
 			                                $rst.rpc = $false
                                             $rst.smb = $false
+                                            $rst.ssh = $false
 		                                }
 		                                $results += $rst	
 	                                }
@@ -839,7 +864,7 @@
                         }
 
                         if($detail -eq "*"){
-                            $detail = "WSMan","RemoteReg","RPC","RDP","SMB" 
+                            $detail = "WSMan","RemoteReg","RPC","RDP","SMB","SSH" 
                         }
 
                         $detail | Select -Unique | Foreach-Object { $TestServerParams.add($_,$True) }
@@ -903,4 +928,5 @@
             }
         }
     }
+
 }
